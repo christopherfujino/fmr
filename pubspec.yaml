@@ -1,0 +1,10 @@
+name: fmr
+description: Flutter (virtual) Mono-Repo tool.
+
+environment:
+  sdk:
+    '>=3.0.0-0'
+
+# exact pins, roll with `dart pub upgrade`
+dependencies:
+  args: 2.4.0

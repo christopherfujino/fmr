@@ -1,3 +1,6 @@
 [submodule "framework"]
 	path = framework
 	url = git@github.com:flutter/flutter.git
+[submodule "engine"]
+	path = engine
+	url = git@github.com:flutter/engine.git

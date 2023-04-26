@@ -4,3 +4,6 @@
 [submodule "engine"]
 	path = engine
 	url = git@github.com:flutter/engine.git
+[submodule "dart-sdk"]
+	path = dart-sdk
+	url = git@github.com:dart-lang/sdk

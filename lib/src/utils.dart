@@ -29,7 +29,8 @@ Future<io.ProcessResult> runProcess(
   bool requireSuccess = true,
   String? workingDirectory,
 }) async {
-  print('Executing `${cmd.join(' ')}`${workingDirectory == null ? '' : ' in $workingDirectory'}');
+  print(
+      'Executing `${cmd.join(' ')}`${workingDirectory == null ? '' : ' in $workingDirectory'}');
   final executable = cmd.first;
   final args = cmd.sublist(1);
   final result = await io.Process.run(
@@ -47,4 +48,18 @@ Future<io.ProcessResult> runProcess(
     );
   }
   return result;
+}
+
+Future<String> get python async {
+  var result = await runProcess(
+    <String>['which', 'python3'],
+    requireSuccess: false,
+  );
+  if (result.exitCode == 0) {
+    return (result.stdout as String).trim();
+  }
+  result = await runProcess(
+    <String>['which', 'python'],
+  );
+  return (result.stdout as String).trim();
 }

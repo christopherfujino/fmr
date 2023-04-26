@@ -4,8 +4,10 @@ Future<List<T>> walkRepos<T>(
   Repository root,
   Future<T> Function(Repository repo) callback,
 ) async {
-  return Future.wait([
+  return Future.wait(<Future<T>>[
     callback(root),
-    ...root.visitDependencies<T>(callback),
+    ...root.visitDependencies<T>((Repository repo) {
+      return walkRepos(repo, callback);
+    }),
   ]);
 }

@@ -3,7 +3,6 @@ import 'dart:io' as io;
 import 'package:args/command_runner.dart';
 import 'package:file/file.dart';
 import 'package:file/local.dart';
-import 'package:path/path.dart';
 import 'package:fmr/fmr.dart';
 
 Future<void> main(List<String> args) async {
@@ -22,4 +21,4 @@ Future<void> main(List<String> args) async {
 
 const fs = LocalFileSystem();
 
-Directory get _root => fs.file(io.Platform.script.path).parent.parent;
+Directory get _root => fs.file(io.Platform.script.path).parent.parent.parent;

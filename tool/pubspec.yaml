@@ -9,3 +9,4 @@ environment:
 dependencies:
   args: 2.4.0
   file: 6.1.4
+  yaml: 3.1.1

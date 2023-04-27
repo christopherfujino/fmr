@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:file/file.dart';
 
+import 'pubspec.dart';
 import 'utils.dart';
 
 sealed class Repository {
@@ -15,17 +16,13 @@ sealed class Repository {
 
   final Map<Type, Repository> dependencies;
 
-  Iterable<Future<T>> visitDependencies<T>(
-    Future<Iterable<T>> Function(Repository repo) callback,
-  ) {
-    return dependencies.values.fold<List<Future<T>>>(
-      <Future<T>>[],
-      (List<T> accumulator, Repository repo) async {
-        // Ensure this dep is sync'd with [this].
-        await repo.sync(this);
-        return accumulator..addAll(await callback(repo));
-      },
-    );
+  Future<void> visitDependencies<T>(
+    void Function(Repository repo) callback,
+  ) async {
+    for (final dependency in dependencies.values) {
+      await dependency.sync(this);
+      callback(dependency);
+    }
   }
 
   final String name;
@@ -60,7 +57,7 @@ final class Framework extends Repository {
 
   File get flutterBin => dir.childDirectory('bin').childFile('flutter');
 
-  late final Future<void> _ensureToolBuilt = startProcess(
+  late final Future<void> _ensureToolBuilt = runProcess(
     <String>[flutterBin.path, '--version'],
   );
 
@@ -112,7 +109,7 @@ final class Dart extends Repository {
     required Directory root,
   }) : super(
           dir: root.childDirectory('dart-sdk'),
-          dependencies: const {},
+          dependencies: {Analyzer: Analyzer(root: root)},
           name: 'dart-sdk',
         );
 
@@ -137,18 +134,50 @@ final class Dart extends Repository {
         inGetVersionFileContent = true;
       }
     }
-    throw StateError('Could not parse the output of //dart-sdk/tools/utils.py:\n\n$lines');
+    throw StateError(
+      'Could not parse the output of //dart-sdk/tools/utils.py:\n\n$lines',
+    );
   }
 
-  Future<void> sync(covariant Engine parent) async{
-    final revision = (await parent.dir
-            .childDirectory('bin')
-            .childDirectory('internal')
-            .childFile('engine.version')
-            .readAsString())
-        .trim();
+  static final _kDartRevisionEngineDepsPattern =
+      RegExp('\\s+\'dart_revision\': \'([0-9a-f]{40})\',');
+  Future<void> sync(covariant Engine parent) async {
+    final deps = (await parent.dir.childFile('DEPS').readAsString()).trim();
 
-    await runProcess(<String>['git', 'checkout', revision],
-        workingDirectory: dir.path);
+    final match = _kDartRevisionEngineDepsPattern.firstMatch(deps);
+    if (match == null) {
+      throw StateError(
+        'The pattern ${_kDartRevisionEngineDepsPattern.pattern} did not match the deps file contents:\n\n$deps',
+      );
+    }
+
+    final revision = match.group(1)!;
+
+    await runProcess(
+      <String>['git', 'checkout', revision],
+      workingDirectory: dir.path,
+    );
   }
+}
+
+// Part of Dart repo.
+final class Analyzer extends Repository {
+  Analyzer({
+    required Directory root,
+  }) : super(
+          dir: root
+              .childDirectory('dart-sdk')
+              .childDirectory('pkg')
+              .childDirectory('analyzer'),
+          dependencies: const {},
+          name: 'analyzer',
+        );
+
+  Future<String> getVersion() async {
+    final pubspec = Pubspec.fromFile(dir.childFile('pubspec.yaml'));
+    return pubspec.version;
+  }
+
+  // no-op.
+  Future<void> sync(covariant Dart parent) async {}
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:args/command_runner.dart';
 import 'package:file/file.dart';
 
@@ -36,16 +38,25 @@ class StatusCommand extends Command<int> {
   Future<int> run() async {
     final framework = Framework(root: root);
 
-    final versions = await walkRepos<String>(
+    final versions = <String>[];
+    await walkRepos<String>(
       framework,
-      (Repository repo) async {
-        return '${repo.name}: '.padRight(10) + await repo.getVersion();
+      (Repository repo, int depth) async {
+        final version = await repo.getVersion();
+        versions.add(_formatVersion(repo.name, version, depth));
       },
     );
-    for (final version in versions) {
-      print(version);
-    }
+    print('');
+    versions.forEach(print);
 
     return 0;
   }
+}
+
+String _formatVersion(String name, String version, int depth) {
+  String prefix = '';
+  if (depth > 0) {
+    prefix = '${'   ' * depth}⮡> ';
+  }
+  return '$prefix$name: '.padRight(20) + version;
 }

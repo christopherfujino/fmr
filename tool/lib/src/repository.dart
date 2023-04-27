@@ -9,9 +9,8 @@ import 'utils.dart';
 
 sealed class Repository {
   const Repository({
-    required this.dependencies,
+    this.dependencies = const <Repository>[],
     required this.name,
-    required this.dir,
   });
 
   // TODO consider dependencies (such as pub packages) that appear multiple
@@ -27,9 +26,26 @@ sealed class Repository {
     }
   }
 
+  // TODO add label for how it is pinned by its parent
+
   final String name;
 
   Future<String> getVersion();
+  Future<String> getRevision();
+
+  Future<void> sync(Repository parent);
+}
+
+/// A repository that is depended on via pinned git revision.
+abstract class LocalRepository extends Repository {
+  LocalRepository({
+    super.dependencies,
+    required super.name,
+    required this.dir,
+  }) : super();
+
+  final Directory dir;
+
   Future<String> getRevision() async {
     final io.ProcessResult result = await runProcess(
       <String>['git', 'rev-parse', 'HEAD'],
@@ -42,18 +58,37 @@ sealed class Repository {
 
     return (result.stdout as String).trim();
   }
-
-  final Directory dir;
-
-  Future<void> sync(Repository parent);
 }
 
-final class Framework extends Repository {
-  Framework({
+/// A package depended on via a pubspec.yaml file.
+class PubDependency extends Repository {
+  PubDependency({
+    required super.name,
+    required this.parentPubspec,
+  }) : super();
+
+  final Pubspec parentPubspec;
+
+  Future<String> getRevision() async => 'unknown revision';
+
+  Future<String> getVersion() async {
+    return parentPubspec.dependencies[name]!;
+  }
+
+  // There is currently nothing to sync.
+  // TODO we could curl the tarball from pub
+  Future<void> sync(Repository parent) => Future<void>.value();
+}
+
+final class FlutterSDK extends LocalRepository {
+  FlutterSDK({
     required Directory root,
   }) : super(
-          dependencies: [Engine(root: root)],
-          name: 'framework',
+          dependencies: [
+            Engine(root: root),
+            FlutterTools(root: root),
+          ],
+          name: 'Flutter SDK',
           dir: root.childDirectory('framework'),
         );
 
@@ -78,24 +113,47 @@ final class Framework extends Repository {
   }
 
   Future<void> sync(Repository parent) {
-    throw UnimplementedError('The framework is the root--there is no parent!');
+    throw UnimplementedError(
+        'The Flutter SDK is the root--there is no parent!');
   }
 }
 
-//final class Dds extends Repository with PubDependency {}
+final class FlutterTools extends LocalRepository {
+  FlutterTools({required Directory root})
+      : super(
+          name: 'flutter_tools',
+          dependencies: _dependenciesFromPubspec(
+            root
+                .childDirectory('framework')
+                .childDirectory('packages')
+                .childDirectory('flutter_tools')
+                .childFile('pubspec.yaml'),
+          ),
+          dir: root
+              .childDirectory('framework')
+              .childDirectory('packages')
+              .childDirectory('flutter_tools'),
+        );
 
-final class Engine extends Repository {
+  Future<String> getVersion() =>
+      Future<String>.value('n/a (same as framework)');
+
+  // no-op.
+  Future<void> sync(covariant FlutterSDK parent) async {}
+}
+
+final class Engine extends LocalRepository {
   Engine({
     required Directory root,
   }) : super(
           dir: root.childDirectory('engine'),
-          dependencies: [Dart(root: root)],
+          dependencies: [DartSDK(root: root)],
           name: 'engine',
         );
 
   Future<String> getVersion() => getRevision();
 
-  Future<void> sync(covariant Framework parent) async {
+  Future<void> sync(covariant FlutterSDK parent) async {
     final revision = (await parent.dir
             .childDirectory('bin')
             .childDirectory('internal')
@@ -108,15 +166,23 @@ final class Engine extends Repository {
   }
 }
 
+//final class BuildRoot extends LocalRepository {
+//  BuildRoot({
+//    required Directory root,
+//  }) : super(
+//          name: 'buildroot',
+//        );
+//}
+
 /// Dart SDK monorepo.
 ///
 /// Fetched from https://github.com/dart-lang/sdk.
-final class Dart extends Repository {
-  Dart({
+final class DartSDK extends LocalRepository {
+  DartSDK({
     required Directory root,
   }) : super(
           dir: root.childDirectory('dart-sdk'),
-          dependencies: [Analyzer(root: root)],
+          dependencies: [AnalysisServer(root: root)],
           name: 'dart-sdk',
         );
 
@@ -168,23 +234,23 @@ final class Dart extends Repository {
 }
 
 // Part of Dart repo.
-final class Analyzer extends Repository with PubPackage {
-  Analyzer({
+final class AnalysisServer extends LocalRepository with PubPackage {
+  AnalysisServer({
     required Directory root,
   }) : super(
           dir: root
               .childDirectory('dart-sdk')
               .childDirectory('pkg')
-              .childDirectory('analyzer'),
+              .childDirectory('analysis_server'),
           dependencies: [UnifiedAnalytics(root: root)],
-          name: 'analyzer',
+          name: 'analysis_server',
         );
 
-  // no-op.
-  Future<void> sync(covariant Dart parent) async {}
+  // no-op, part of parent's monorepo.
+  Future<void> sync(covariant DartSDK parent) async {}
 }
 
-final class UnifiedAnalytics extends Repository with PubPackage {
+final class UnifiedAnalytics extends LocalRepository with PubPackage {
   UnifiedAnalytics({
     required Directory root,
   }) : super(
@@ -192,7 +258,13 @@ final class UnifiedAnalytics extends Repository with PubPackage {
               .childDirectory('dart-tools')
               .childDirectory('pkgs')
               .childDirectory('unified_analytics'),
-          dependencies: [],
+          dependencies: _dependenciesFromPubspec(
+            root
+                .childDirectory('dart-tools')
+                .childDirectory('pkgs')
+                .childDirectory('unified_analytics')
+                .childFile('pubspec.yaml'),
+          ),
           name: 'unified_analytics',
         );
 
@@ -200,7 +272,7 @@ final class UnifiedAnalytics extends Repository with PubPackage {
       RegExp(r'\s+"tools_rev": "([\da-f]{40})",');
   Future<void> sync(Repository parent) async {
     switch (parent) {
-      case Analyzer():
+      case AnalysisServer():
         // parent.dir will be //sdk/pkg/analyzer
         final depsFile = parent.dir.parent.parent.childFile('DEPS');
         final deps = (await depsFile.readAsString()).trim();
@@ -226,13 +298,27 @@ final class UnifiedAnalytics extends Repository with PubPackage {
   }
 }
 
-mixin PubPackage on Repository {
+mixin PubPackage on LocalRepository {
   Future<String> getVersion() async {
     final pubspec = Pubspec.fromFile(dir.childFile('pubspec.yaml'));
     // get first 8 chars
     final revision = (await getRevision()).substring(0, 9);
+    final pubspecVersion = pubspec.version;
+    if (pubspecVersion == null) {
+      return 'no pubspec version ($revision)';
+    }
     // question mark because reading version from pubspec may not be correct
     // if this commit is not a release.
     return '${pubspec.version}? ($revision)';
   }
+}
+
+List<Repository> _dependenciesFromPubspec(File pubspecFile) {
+  final pubspec = Pubspec.fromFile(pubspecFile);
+  return pubspec.dependencies.keys.map<Repository>((String name) {
+    return PubDependency(
+      name: name,
+      parentPubspec: pubspec,
+    );
+  }).toList();
 }

@@ -36,7 +36,7 @@ class StatusCommand extends Command<int> {
   final String description = 'Report status of all versions.';
 
   Future<int> run() async {
-    final framework = Framework(root: root);
+    final framework = FlutterSDK(root: root);
 
     final versions = <String>[];
     await walkRepos<String>(

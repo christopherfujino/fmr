@@ -13,5 +13,19 @@ class Pubspec {
   final YamlMap root;
 
   String get name => root['name'];
-  String get version => root['version'];
+  String? get version => root['version'];
+
+  Map<String, String> get dependencies {
+    // TODO: what about dev_dependencies?
+    final dependencies = root['dependencies'];
+    final dependencyYamlMap = dependencies as YamlMap;
+    // cast from YamlMap -> Map<dynamic, dynamic> -> Map<String, String>
+    return Map<String, String>.fromEntries(
+      dependencyYamlMap.entries
+          .map<MapEntry<String, String>>((MapEntry<Object?, Object?> entry) {
+        return MapEntry<String, String>(
+            entry.key as String, entry.value as String);
+      }),
+    );
+  }
 }

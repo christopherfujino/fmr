@@ -10,3 +10,6 @@
 [submodule "dart-tools"]
 	path = dart-tools
 	url = git@github.com:dart-lang/tools.git
+[submodule "reports"]
+	path = reports
+	url = git@github.com:christopherfujino/fmr-reports.git

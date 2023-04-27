@@ -14,12 +14,14 @@ sealed class Repository {
     required this.dir,
   });
 
-  final Map<Type, Repository> dependencies;
+  // TODO consider dependencies (such as pub packages) that appear multiple
+  // times in the dependency graph.
+  final List<Repository> dependencies;
 
   Future<void> visitDependencies<T>(
     void Function(Repository repo) callback,
   ) async {
-    for (final dependency in dependencies.values) {
+    for (final dependency in dependencies) {
       await dependency.sync(this);
       callback(dependency);
     }
@@ -50,7 +52,7 @@ final class Framework extends Repository {
   Framework({
     required Directory root,
   }) : super(
-          dependencies: {Engine: Engine(root: root)},
+          dependencies: [Engine(root: root)],
           name: 'framework',
           dir: root.childDirectory('framework'),
         );
@@ -80,12 +82,14 @@ final class Framework extends Repository {
   }
 }
 
+//final class Dds extends Repository with PubDependency {}
+
 final class Engine extends Repository {
   Engine({
     required Directory root,
   }) : super(
           dir: root.childDirectory('engine'),
-          dependencies: {Dart: Dart(root: root)},
+          dependencies: [Dart(root: root)],
           name: 'engine',
         );
 
@@ -104,12 +108,15 @@ final class Engine extends Repository {
   }
 }
 
+/// Dart SDK monorepo.
+///
+/// Fetched from https://github.com/dart-lang/sdk.
 final class Dart extends Repository {
   Dart({
     required Directory root,
   }) : super(
           dir: root.childDirectory('dart-sdk'),
-          dependencies: {Analyzer: Analyzer(root: root)},
+          dependencies: [Analyzer(root: root)],
           name: 'dart-sdk',
         );
 
@@ -161,7 +168,7 @@ final class Dart extends Repository {
 }
 
 // Part of Dart repo.
-final class Analyzer extends Repository {
+final class Analyzer extends Repository with PubPackage {
   Analyzer({
     required Directory root,
   }) : super(
@@ -169,15 +176,63 @@ final class Analyzer extends Repository {
               .childDirectory('dart-sdk')
               .childDirectory('pkg')
               .childDirectory('analyzer'),
-          dependencies: const {},
+          dependencies: [UnifiedAnalytics(root: root)],
           name: 'analyzer',
         );
 
-  Future<String> getVersion() async {
-    final pubspec = Pubspec.fromFile(dir.childFile('pubspec.yaml'));
-    return pubspec.version;
-  }
-
   // no-op.
   Future<void> sync(covariant Dart parent) async {}
+}
+
+final class UnifiedAnalytics extends Repository with PubPackage {
+  UnifiedAnalytics({
+    required Directory root,
+  }) : super(
+          dir: root
+              .childDirectory('dart-tools')
+              .childDirectory('pkgs')
+              .childDirectory('unified_analytics'),
+          dependencies: [],
+          name: 'unified_analytics',
+        );
+
+  static final _kToolsRevDartDepsPattern =
+      RegExp(r'\s+"tools_rev": "([\da-f]{40})",');
+  Future<void> sync(Repository parent) async {
+    switch (parent) {
+      case Analyzer():
+        // parent.dir will be //sdk/pkg/analyzer
+        final depsFile = parent.dir.parent.parent.childFile('DEPS');
+        final deps = (await depsFile.readAsString()).trim();
+
+        final match = _kToolsRevDartDepsPattern.firstMatch(deps);
+        if (match == null) {
+          throw StateError(
+            'The pattern ${_kToolsRevDartDepsPattern.pattern} did not match the deps file contents:\n\n$deps',
+          );
+        }
+
+        final revision = match.group(1)!;
+
+        await runProcess(
+          <String>['git', 'checkout', revision],
+          workingDirectory: dir.path,
+        );
+
+      default:
+        throw UnimplementedError(
+            "Don't know how to sync $name to ${parent.name}");
+    }
+  }
+}
+
+mixin PubPackage on Repository {
+  Future<String> getVersion() async {
+    final pubspec = Pubspec.fromFile(dir.childFile('pubspec.yaml'));
+    // get first 8 chars
+    final revision = (await getRevision()).substring(0, 9);
+    // question mark because reading version from pubspec may not be correct
+    // if this commit is not a release.
+    return '${pubspec.version}? ($revision)';
+  }
 }

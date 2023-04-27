@@ -10,7 +10,7 @@ Future<void> walkRepos<T>(
   int depth = 0,
 }) async {
   await visit(root, depth);
-  final futures = root.dependencies.values.map<Future<void>>((Repository repo) async {
+  final futures = root.dependencies.map<Future<void>>((Repository repo) async {
     await repo.sync(root);
     await walkRepos(repo, visit, depth: depth + 1);
   });

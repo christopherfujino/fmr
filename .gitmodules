@@ -7,3 +7,6 @@
 [submodule "dart-sdk"]
 	path = dart-sdk
 	url = git@github.com:dart-lang/sdk
+[submodule "dart-tools"]
+	path = dart-tools
+	url = git@github.com:dart-lang/tools.git

@@ -1,4 +1,5 @@
 import 'dart:io' as io;
+import 'package:file/file.dart';
 
 Future<int> startProcess(
   List<String> cmd, {
@@ -78,4 +79,12 @@ Future<String> get python async {
     <String>['which', 'python'],
   );
   return (result.stdout as String).trim();
+}
+
+Future<void> downloadFile(String url, File destination) async {
+  print('downloading $url to ${destination.path}...');
+  final client = io.HttpClient();
+  final request = await client.getUrl(Uri.parse(url));
+  final response = await request.close();
+  await response.pipe(destination.openWrite());
 }

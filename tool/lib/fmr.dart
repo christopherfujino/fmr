@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' as io;
 
 import 'package:args/command_runner.dart';
 import 'package:file/file.dart';
@@ -33,6 +34,11 @@ class SyncCommand extends Command<int> {
     await startProcess(
       <String>['git', 'submodule', 'update', '--init', '--recursive'],
       verbose: true,
+    );
+
+    await downloadFile(
+      'https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json',
+      root.childFile('releases.json'),
     );
 
     if (rest.length == 1) {

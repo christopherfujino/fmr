@@ -35,20 +35,25 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   static const String url =
-      'https://github.com/christopherfujino/fmr-reports/blob/main/3.10.0-1.1.pre/dependencies.json';
+      'http://raw.githubusercontent.com/christopherfujino/fmr-reports/main/3.10.0-1.1.pre/dependencies.json';
+  //'https://www.google.com';
   @override
   void initState() {
     super.initState();
-    _future = _parseBlob(http.get(Uri.parse(url)));
   }
 
-  static Future<Map<String, Object?>> _parseBlob(
-      Future<http.Response> futureResponse) async {
-    final response = await futureResponse;
+  static Future<Map<String, Object?>> _fetchBlob() async {
+    final response = await http.get(Uri.parse(url));
     return jsonDecode(response.body) as Map<String, Object?>;
   }
 
-  late final Future<Map<String, Object?>> _future;
+  void _refetch() {
+    setState(() {
+      _future = _fetchBlob();
+    });
+  }
+
+  Future<Map<String, Object?>> _future = _fetchBlob();
 
   @override
   Widget build(BuildContext context) {
@@ -68,12 +73,14 @@ class _MyHomePageState extends State<MyHomePage> {
                 if (snapshot.hasData) {
                   return JsonViewer(snapshot.data!);
                 } else if (snapshot.hasError) {
-                  return const TextSpan(children: <TextSpan>[
-                    TextSpan('Failed to load '),
-                    SelectableText(url),
-                    TextSpan('\n\n${snapshot.error}'),
+                  return Column(children: <Widget>[
+                    SelectableText('Failed to load $url\n\n${snapshot.error}'),
+                    TextButton.icon(
+                      onPressed: _refetch,
+                      label: const Text('Re-fetch'),
+                      icon: const Icon(Icons.refresh),
+                    ),
                   ]);
-                  return Text('Failed to load $url\n${snapshot.error.toString()}');
                 } else {
                   return const Text('loading...');
                 }

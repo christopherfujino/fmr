@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' as io;
 
 import 'repository.dart';
 
@@ -11,10 +12,29 @@ Future<Node<T>> mapRepos<T>(
   Future<T> Function(Repository repo) map,
 ) async {
   final value = await map(root);
-  final futures = root.dependencies.map<Future<Node<T>>>((Repository repo) async {
-    await repo.sync(root);
-    return await mapRepos(repo, map);
-  });
+  List<Future<Node<T>>> futures = <Future<Node<T>>>[];
+  try {
+    for (final dependency in root.dependencies) {
+      // Must use .then(onError: ...) in order to catch an async exception
+      final maybeFuture = await dependency.sync(root).then<Future<Node<T>>?>(
+        (void _) => mapRepos<T>(dependency, map),
+        onError: (Object err, StackTrace _) {
+          if (err is! DependencyDoesNotExist) {
+            throw err;
+          }
+          io.stderr.writeln('${err.parent.name} does not have dependency ${err.child.name}');
+          return null;
+        },
+      );
+      if (maybeFuture != null) {
+        futures.add(maybeFuture);
+      }
+    }
+  } on DependencyDoesNotExist catch (exc) {
+    io.stderr.writeln(
+      'Failed to sync dependency ${exc.child.name} to ${exc.parent.name}',
+    );
+  }
 
   return Node(
     children: await Future.wait(futures),

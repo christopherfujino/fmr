@@ -15,6 +15,9 @@ sealed class Repository {
 
   // TODO consider dependencies (such as pub packages) that appear multiple
   // times in the dependency graph.
+  // TODO consider dependencies that were added (or removed) at a certain
+  // point in time. [dependencies] may need to be lazily evaluated, dependent
+  // on the version of the parent.
   final List<Repository> dependencies;
 
   Future<void> visitDependencies<T>(
@@ -161,8 +164,7 @@ final class Engine extends LocalRepository {
             .readAsString())
         .trim();
 
-    await runProcess(<String>['git', 'checkout', revision],
-        workingDirectory: dir.path);
+    await _checkoutWithoutHooks(revision, dir);
   }
 }
 
@@ -226,10 +228,7 @@ final class DartSDK extends LocalRepository {
 
     final revision = match.group(1)!;
 
-    await runProcess(
-      <String>['git', 'checkout', revision],
-      workingDirectory: dir.path,
-    );
+    await _checkoutWithoutHooks(revision, dir);
   }
 }
 
@@ -279,18 +278,15 @@ final class UnifiedAnalytics extends LocalRepository with PubPackage {
 
         final match = _kToolsRevDartDepsPattern.firstMatch(deps);
         if (match == null) {
-          throw StateError(
-            'The pattern ${_kToolsRevDartDepsPattern.pattern} did not match the deps file contents:\n\n$deps',
+          throw DependencyDoesNotExist(
+            child: this,
+            parent: parent,
           );
         }
 
         final revision = match.group(1)!;
 
-        await runProcess(
-          <String>['git', 'checkout', revision],
-          workingDirectory: dir.path,
-        );
-
+        await _checkoutWithoutHooks(revision, dir);
       default:
         throw UnimplementedError(
             "Don't know how to sync $name to ${parent.name}");
@@ -321,4 +317,39 @@ List<Repository> _dependenciesFromPubspec(File pubspecFile) {
       parentPubspec: pubspec,
     );
   }).toList();
+}
+
+Future<void> _checkoutWithoutHooks(String ref, Directory dir) async {
+  await runProcess(
+    <String>[
+      'git',
+      '-c',
+      // won't work on Windows
+      'core.hooksPath=/dev/null',
+      'fetch',
+      '--all',
+    ],
+    workingDirectory: dir.path,
+  );
+  await runProcess(
+    <String>[
+      'git',
+      '-c',
+      // won't work on Windows
+      'core.hooksPath=/dev/null',
+      'checkout',
+      ref,
+    ],
+    workingDirectory: dir.path,
+  );
+}
+
+final class DependencyDoesNotExist implements Exception {
+  DependencyDoesNotExist({
+    required this.child,
+    required this.parent,
+  });
+
+  final Repository child;
+  final Repository parent;
 }

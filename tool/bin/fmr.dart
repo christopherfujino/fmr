@@ -10,7 +10,7 @@ Future<void> main(List<String> args) async {
     'fmr',
     'Flutter Mono-Repo Tool',
   )
-    ..addCommand(SyncCommand())
+    ..addCommand(SyncCommand(root: _root))
     ..addCommand(StatusCommand(root: _root));
 
   // This can be null if no sub-command passed/parsed

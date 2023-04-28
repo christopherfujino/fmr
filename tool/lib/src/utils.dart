@@ -3,21 +3,31 @@ import 'dart:io' as io;
 Future<int> startProcess(
   List<String> cmd, {
   bool requireSuccess = true,
+  bool verbose = false,
+  String? workingDirectory,
 }) async {
-  print('Executing `${cmd.join(' ')}`');
+  if (verbose) {
+    var message = 'Executing `$cmd`';
+    if (workingDirectory != null) {
+      message += ' in $workingDirectory';
+    }
+    print(message);
+  }
   final executable = cmd.first;
   final args = cmd.sublist(1);
   final process = await io.Process.start(
     executable,
     args,
-    mode: io.ProcessStartMode.inheritStdio,
+    mode:
+        verbose ? io.ProcessStartMode.inheritStdio : io.ProcessStartMode.normal,
+    workingDirectory: workingDirectory,
   );
   final exitCode = await process.exitCode;
   if (requireSuccess && exitCode != 0) {
     throw io.ProcessException(
       executable,
       args,
-      'Returned non-zero',
+      'Returned non-zero: $exitCode (in $workingDirectory)',
       exitCode,
     );
   }
@@ -27,10 +37,16 @@ Future<int> startProcess(
 Future<io.ProcessResult> runProcess(
   List<String> cmd, {
   bool requireSuccess = true,
+  bool verbose = false,
   String? workingDirectory,
 }) async {
-  print(
-      'Executing `${cmd.join(' ')}`${workingDirectory == null ? '' : ' in $workingDirectory'}');
+  if (verbose) {
+    var message = 'Executing `$cmd`';
+    if (workingDirectory != null) {
+      message += ' in $workingDirectory';
+    }
+    print(message);
+  }
   final executable = cmd.first;
   final args = cmd.sublist(1);
   final result = await io.Process.run(
@@ -43,7 +59,7 @@ Future<io.ProcessResult> runProcess(
     throw io.ProcessException(
       executable,
       args,
-      'Returned non-zero',
+      'Returned non-zero: $exitCode (in $workingDirectory)\nstdout: ${result.stdout}\nstderr: ${result.stderr}',
       exitCode,
     );
   }

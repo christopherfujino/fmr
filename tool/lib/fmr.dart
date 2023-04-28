@@ -9,6 +9,12 @@ import 'src/repository.dart';
 import 'src/walker.dart';
 
 class SyncCommand extends Command<int> {
+  SyncCommand({
+    required this.root,
+  });
+
+  final Directory root;
+
   @override
   final String name = 'sync';
 
@@ -16,9 +22,42 @@ class SyncCommand extends Command<int> {
   final String description = 'Sync git submodules in the virtual monorepo.';
 
   Future<int> run() async {
+    final rest = argResults!.rest;
+
+    if (rest.length > 2) {
+      throw StateError(
+        'The `fmr $name` sub-command supports at most one trailing argument, for a flutter/flutter git ref to sync to.',
+      );
+    }
+
     await startProcess(
       <String>['git', 'submodule', 'update', '--init', '--recursive'],
+      verbose: true,
     );
+
+    if (rest.length == 1) {
+      final framework = FlutterSDK(root: root);
+
+      await startProcess(
+        <String>['git', 'fetch', '--all', '--tags'],
+        verbose: true,
+        workingDirectory: root.childDirectory('framework').path,
+      );
+      await startProcess(
+        <String>['git', 'checkout', rest.first],
+        verbose: true,
+        workingDirectory: root.childDirectory('framework').path,
+      );
+
+      // Now ensure all dependent sub-modules are sync'd to the right version
+      await mapRepos<void>(
+        framework,
+        // We don't need to actually map, we just want to make sure they're
+        // synchronized.
+        (Repository _) async {},
+      );
+    }
+
     return 0;
   }
 }
@@ -68,7 +107,8 @@ Map<String, Object?> _jsonEncode(Node<(String, String)> root) {
     'version': version,
   };
 
-  final dependencies = root.children.map<Map<String, Object?>>((Node<(String, String)> child) {
+  final dependencies =
+      root.children.map<Map<String, Object?>>((Node<(String, String)> child) {
     return _jsonEncode(child);
   }).toList();
 

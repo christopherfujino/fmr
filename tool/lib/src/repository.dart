@@ -97,7 +97,7 @@ final class FlutterSDK extends LocalRepository {
 
   File get flutterBin => dir.childDirectory('bin').childFile('flutter');
 
-  late final Future<void> _ensureToolBuilt = runProcess(
+  Future<void> get _ensureToolBuilt => runProcess(
     <String>[flutterBin.path, '--version'],
   );
 

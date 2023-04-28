@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as io;
 
 import 'package:args/command_runner.dart';
 import 'package:file/file.dart';
 
 import 'src/utils.dart';
 import 'src/repository.dart';
+import 'src/releases_json.dart';
 import 'src/walker.dart';
 
 class SyncCommand extends Command<int> {
@@ -102,6 +102,108 @@ class StatusCommand extends Command<int> {
       print(_prettyPrintForHumans(nameVersionTree));
     }
 
+    return 0;
+  }
+}
+
+class GenerateReports extends Command<int> {
+  GenerateReports({
+    required this.root,
+  }) {
+    argParser.addOption(
+      'number',
+      abbr: 'n',
+      help: 'Number of snapshots to generate.',
+      defaultsTo: '1',
+    );
+  }
+
+  @override
+  final String name = 'generate';
+
+  @override
+  final String description = 'generate JSON reports for Flutter SDK releases.';
+
+  final Directory root;
+
+  Future<int> run() async {
+    var n = int.parse(argResults!['number']);
+    final releasesJson = ReleasesJson(file: root.childFile('releases.json'));
+    final framework = FlutterSDK(root: root);
+
+    print('Fetching framework tags...');
+    await startProcess(
+      <String>['git', 'fetch', '--all', '--tags'],
+      verbose: true,
+      workingDirectory: root.childDirectory('framework').path,
+    );
+
+    for (final release in releasesJson.releases) {
+      // We only namespace by version, so if the same tag appeared on multiple
+      // branches we don't duplicate.
+      final reportDir =
+          root.childDirectory('reports').childDirectory(release.version);
+      final dependenciesJson = reportDir.childFile('dependencies.json');
+      if (dependenciesJson.existsSync()) {
+        print('skipping ${dependenciesJson.path} as it already exists...');
+        continue;
+      }
+      print('creating ${reportDir.path}...');
+      reportDir.createSync();
+      print('entering ${reportDir.path}...');
+
+      print('checking out framework at ${release.version}...');
+      await startProcess(
+        <String>['git', 'checkout', release.version],
+        verbose: true,
+        workingDirectory: root.childDirectory('framework').path,
+      );
+
+      final nameVersionTree = await mapRepos<(String, String)>(
+        framework,
+        (Repository repo) async => (repo.name, await repo.getVersion()),
+      );
+
+      final map = _jsonEncode(nameVersionTree);
+      final jsonString = JsonEncoder.withIndent('  ').convert(map);
+
+      print('writing $dependenciesJson to disk...');
+      dependenciesJson.writeAsStringSync(jsonString);
+
+      print('committing report to git...');
+      final repoDir = reportDir.parent;
+      await startProcess(
+        const <String>['git', 'checkout', 'main'],
+        workingDirectory: repoDir.path,
+        verbose: true,
+      );
+      await startProcess(
+        const <String>['git', 'add', '-A'],
+        workingDirectory: repoDir.path,
+        verbose: true,
+      );
+      await startProcess(
+        <String>[
+          'git',
+          'commit',
+          '-m',
+          'Added report for Flutter ${release.version}'
+        ],
+        workingDirectory: repoDir.path,
+        verbose: true,
+      );
+      await startProcess(
+        <String>['git', 'push', 'origin'],
+        workingDirectory: repoDir.path,
+        verbose: true,
+      );
+
+      n -= 1;
+      if (n <= 0) {
+        print('done.');
+        break;
+      }
+    }
     return 0;
   }
 }

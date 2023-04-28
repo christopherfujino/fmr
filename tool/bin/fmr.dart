@@ -11,7 +11,8 @@ Future<void> main(List<String> args) async {
     'Flutter Mono-Repo Tool',
   )
     ..addCommand(SyncCommand(root: _root))
-    ..addCommand(StatusCommand(root: _root));
+    ..addCommand(StatusCommand(root: _root))
+    ..addCommand(GenerateReports(root: _root));
 
   // This can be null if no sub-command passed/parsed
   final int? code = (await runner.run(args));
